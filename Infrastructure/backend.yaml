@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: Backend Template for wantwillwont.com
+
+Parameters:
+  DomainName:
+    Type: String
+    Description: Domian name for api
+  CognitoDomainName:
+    Type: String
+    Description: Domian name for cognito
+  PoolID:
+    Type: String
+    Description: Id (NOT THE ARN) of the user pool
+    
+
+Resources:
+  API: # endpoint
+    Type: AWS::Serverless::Api
+    Properties:
+      Description: !Sub "Unified DotNet API for ${DomainName}"
+      Name: !Sub "Unified DotNet API for ${DomainName}"
+      StageName: Prod
+      EndpointConfiguration:
+        Type: REGIONAL
+        x-amazon-apigateway-importexport-version: "1.0"
+      
+  APIMapping: # Creates the mapping for Reporting V1
+    Type: AWS::ApiGatewayV2::ApiMapping
+    DependsOn: API
+    Properties: 
+      ApiId: !Ref API
+      ApiMappingKey: "api"
+      DomainName: !Ref DomainName
+      Stage: !Ref API.Stage
+
+    
+  OAuthHelperFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../Backend/oauth
+      Timeout: 900
+      Runtime: nodejs14.x
+      Handler: oauth.handler
+      Events:
+        BaseRequest:
+          Type: Api
+          Properties:
+            RestApiId: !Ref API
+            Path: /oauth/{proxy+}
+            Method: ANY
+      Environment:
+        Variables:
+          DOMAIN: !Ref DomainName
+          COGNITO_DOMAIN: !Ref CognitoDomainName
+      # Uncomment this if you need to read the user directly from the pool oro to get info about a group
+      # Policies:
+      # - Statement:
+      #   - Effect: Allow
+      #     Action:
+      #       - cognito-idp:AdminGetUser
+      #       - cognito-idp:AdminListGroupsForUser
+      #       - cognito-idp:ListUsers
+      #       - cognito-idp:ListUsersInGroup
+      #     Resource:
+      #       - !Sub 'arn:aws:cognito-idp:us-east-1:${AWS::AccountId}:userpool/${PoolID}'

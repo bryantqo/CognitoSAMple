@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: Static web hosting proxy from s3
+
+Parameters:
+  DomainName:
+    Type: String
+    Description: Domian name for api
+
+Resources:
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'static.${DomainName}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref Bucket
+      PolicyDocument:
+        Statement:
+          - Sid: "AllowDeploy"
+            Action:
+              - 's3:GetObject'
+              - 's3:GetObjectVersion'
+              - 's3:PutObject'
+              - 's3:PutObjectAcl'
+            Effect: Allow
+            Resource: !Sub 'arn:aws:s3:::${Bucket}/*'
+            Principal:
+              AWS: !Sub 'arn:aws:iam::930156663175:root'
+          - Sid: "AllowDeploy"
+            Action:
+              - 's3:*'
+            Effect: Allow
+            Resource: !Sub 'arn:aws:s3:::${Bucket}/*'
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+          - Sid: "AllowPublicReadForStatic"
+            Action:
+              - 's3:GetObject'
+            Effect: Allow
+            Principal: "*"
+            Resource: !Sub 'arn:aws:s3:::${Bucket}/*'
+            
+  StaticMapping: # Creates the mapping for Reporting V1
+    Type: AWS::ApiGatewayV2::ApiMapping
+    DependsOn: StaticApiGatewayDefaultStage
+    Properties: 
+      ApiId: !Ref Static
+      ApiMappingKey: ""
+      DomainName: !Ref DomainName
+      Stage: $default
+
+  Static: # Reporting V1 endpoint
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Description: !Sub "${DomainName} - Static Web"
+      DefinitionBody:
+        openapi: "3.0.1"
+        info:
+          title: !Sub "${DomainName} Static web hosting"
+        paths:
+          /:
+            get:
+              responses:
+                default:
+                  description: "Default response for GET /"
+              x-amazon-apigateway-integration:
+                requestParameters:
+                  overwrite:header.Accept: "application/json"
+                payloadFormatVersion: "1.0"
+                type: "http_proxy"
+                httpMethod: "ANY"
+                uri: !GetAtt Bucket.WebsiteURL
+                connectionType: "INTERNET"
+          /{proxy+}:
+            get:
+              responses:
+                default:
+                  description: "Default response for GET /"
+              x-amazon-apigateway-integration:
+                payloadFormatVersion: "1.0"
+                type: "http_proxy"
+                httpMethod: "ANY"
+                uri: !Sub "${Bucket.WebsiteURL}/{proxy}"
+                connectionType: "INTERNET"
+        x-amazon-apigateway-importexport-version: "1.0"
+
+Outputs:
+  Bucket:
+    Value: Bucket

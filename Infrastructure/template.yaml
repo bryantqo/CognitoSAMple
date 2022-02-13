@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: Template for wantwillwont.com
+
+Parameters:
+  DomainName:
+    Type: String
+    Description: Domian name for api
+  CognitoDomainName:
+    Type: String
+    Description: Domian name for cognito
+  ZoneId:
+    Type: String
+    Description: Zone ID 
+    Default: none
+  CertArn:
+    Type: String
+    Description: Certificate ARN
+    Default: none
+  PoolID:
+    Type: String
+    Description: Id (NOT THE ARN) of the user pool
+    
+
+Resources:
+  CustomDomainName:
+    Type: AWS::ApiGatewayV2::DomainName
+    Properties:
+      DomainName: !Ref DomainName
+      DomainNameConfigurations: 
+        - EndpointType: REGIONAL
+          CertificateArn: !Ref CertArn
+
+  DomainRecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      Name: !Ref DomainName
+      HostedZoneId: !Ref ZoneId
+      AliasTarget: 
+        DNSName: !GetAtt CustomDomainName.RegionalDomainName
+        HostedZoneId: !GetAtt CustomDomainName.RegionalHostedZoneId
+      Type: A
+
+  StaticHostingApp:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./frontend.yaml
+      Parameters:
+        DomainName: !Ref CustomDomainName
+        
+  BackendApp:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./backend.yaml
+      Parameters:
+        DomainName: !Ref CustomDomainName
+        PoolID: !Ref PoolID
+
+
